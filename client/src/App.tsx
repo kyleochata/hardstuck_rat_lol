@@ -6,15 +6,35 @@ import './App.css'
 function App() {
   const [count, setCount] = useState(0)
   const fetchData = async () => {
-    const response = await fetch(`api/lol/champions`)
-    if (response.ok) {
-      console.log(response.json())
-    } else {
-      console.log('error', response.status)
+    try {
+      const response = await fetch(`api/lol/kyleochata/NA1`)
+      if (response.ok) {
+        const data = await response.json()
+        console.log(data)
+      } else {
+        console.error('Fetch error:', response.status, response.statusText)
+      }
+    } catch (e) {
+      console.error('Network error:', e)
     }
   }
-  fetchData()
 
+  const fetchContext = async () => {
+    const r = await fetch(`api/lol/kyleochata/NA1/matches`)
+    if (r.ok) {
+      console.log(r.json())
+    } else {
+      console.log('error2', r.status)
+    }
+  }
+
+  const getboth = async () => {
+    const sum = await fetchData()
+    const fetch = await fetchContext()
+
+    return
+  }
+  getboth()
   return (
     <>
       <div>

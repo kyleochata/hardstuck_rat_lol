@@ -3,65 +3,48 @@ package routes
 import (
 	"encoding/json"
 	"fmt"
+	"hardstuck_rat_lol_server/helper"
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
-
-	"github.com/joho/godotenv"
+	"sync"
 )
-
-//dir returns the absolute path of the given environment file (envFile) in the Go module's root directory.
-//It searches for the go.mod file in the current directory and its parent directories until it finds it. and then appends envFile to same directory of the go.mod file.
-//Panics if it can't find go.mod file
-
-func dir(envFile string) string {
-	currentDir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	for {
-		goModPath := filepath.Join(currentDir, "go.mod")
-		if _, err := os.Stat(goModPath); err == nil {
-			break
-		}
-
-		parent := filepath.Dir(currentDir)
-		if parent == currentDir {
-			panic(fmt.Errorf("go.mod not found"))
-		}
-		currentDir = parent
-	}
-
-	return filepath.Join(currentDir, envFile)
-}
-func LoadEnv(envFile string) {
-	err := godotenv.Load(dir(envFile))
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-}
-func get_riot_key() string {
-	LoadEnv(".env")
-	apiKey := os.Getenv("RIOT_API_KEY")
-	if apiKey == "" {
-		log.Fatal("RIOT_API_KEY is not set or is empty")
-	}
-	return apiKey
-}
 
 type Account struct {
 	Puuid    string `json:"puuid"`
 	GameName string `json:"gameName"`
 	TagLine  string `json:"tagLine"`
 }
+type SummonerStore struct {
+	mu        sync.RWMutex
+	summoners map[string]Account
+}
+
+var GlobalSummonerStore = &SummonerStore{
+	summoners: make(map[string]Account),
+}
+
+func (s *SummonerStore) SaveSummoner(account Account) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := account.GameName + "-" + account.TagLine // Composite key
+	s.summoners[key] = account
+}
+
+func (s *SummonerStore) GetSummoner(gameName, tagLine string) (Account, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	key := gameName + "-" + tagLine
+	summoner, found := s.summoners[key]
+	if !found {
+		log.Printf("Summoner with name %s and tag %s not found", gameName, tagLine)
+		return Account{}, false
+	}
+	return summoner, true
+}
 
 func getAccountByNameAndTag(w http.ResponseWriter, r *http.Request) {
-
-	apiKey := get_riot_key()
-
+	apiKey := helper.Get_riot_key()
 	summonerName := r.PathValue("summoner_name")
 	summonerTag := r.PathValue("tag")
 
@@ -70,7 +53,7 @@ func getAccountByNameAndTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	url := fmt.Sprintf("https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/%v/%v?api_key=%v", summonerName, summonerTag, apiKey)
+	url := fmt.Sprintf(`https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/%v/%v?api_key=%v`, summonerName, summonerTag, apiKey)
 
 	response, err := http.Get(url)
 	if err != nil {
@@ -78,7 +61,6 @@ func getAccountByNameAndTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer response.Body.Close()
-
 	if response.StatusCode != http.StatusOK {
 		responseData, _ := io.ReadAll(response.Body)
 		http.Error(w, fmt.Sprintf("HTTP error: %d, Response body: %s", response.StatusCode, responseData), http.StatusBadRequest)
@@ -90,13 +72,19 @@ func getAccountByNameAndTag(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Error reading response body: %v", err), http.StatusInternalServerError)
 		return
 	}
-
 	var account Account
+
 	err = json.Unmarshal(responseData, &account)
 	if err != nil {
 		http.Error(w, "Error parsing JSON", http.StatusInternalServerError)
 		return
 	}
+
+	//save context for use for other riot api calls
+	GlobalSummonerStore.SaveSummoner(account)
+
+	x, _ := GlobalSummonerStore.GetSummoner(summonerName, summonerTag)
+	log.Println(x)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(account)
@@ -107,9 +95,20 @@ func getAccountByNameAndTag(w http.ResponseWriter, r *http.Request) {
 
 // }
 
-// func getUserMatchList(w http.ResponseWriter, r *http.Request){
+func getUserMatchList(w http.ResponseWriter, r *http.Request) {
+	summonerName := r.PathValue("summoner_name")
+	summonerTag := r.PathValue("tag")
 
-// }
+	summoner, found := GlobalSummonerStore.GetSummoner(summonerName, summonerTag)
+	log.Println(summoner.Puuid, summoner.GameName, summoner.TagLine)
+	if !found {
+		fmt.Println("user from session not pulled, getumatch", summoner)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summoner.Puuid)
+
+}
 
 func RouteSetup(router *http.ServeMux) {
 	router.HandleFunc("GET /api/hello", func(w http.ResponseWriter, r *http.Request) {
@@ -146,5 +145,5 @@ func RouteSetup(router *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(responseData)
 	})
-	//router.HandleFunc("GET /api/lol/{summoner_name}/{tag}/matches", getUserMatches)
+	router.HandleFunc("GET /api/lol/{summoner_name}/{tag}/matches", getUserMatchList)
 }
