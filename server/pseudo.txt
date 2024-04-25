@@ -1,0 +1,35 @@
+golang backend for server.
+
+GOAL: Get lol api to show user based off of entering summoner name (must have the tag as well (NA1))
+
+enter sum name => find riot id => find matches
+get items user bought from the specified match
+= run a simple analysis of if there was a better choice in items. must do some sort of damage check. must get the items and base attack => keep to auto-focused champs (ADCs)
+
+
+stretch: get a mongo/sql bd involved to add peopel to groups like leetify groups.
+
+[x] = server up and running
+  -using net/http standard package => NewServeMux() for route handling
+
+[] - call league of legends api
+  []- summoner name to puuid
+  [] - puuid to get matches
+  [] - matchID to get detailed match info
+
+CHOICE :
+1. make a highlight video (like leetify) using ingame replay => quadra or pentakills only
+  [] - get match replay data
+  [] - find out when a quadra or pentakill is made.
+  [] - create a mp4 out of the quadra/penta clip
+  [] - return video to frontend for viewing.
+  [] - stretch: add leetify logo to end of the video like their cs highlights
+  [] - save the video to user so it doesn't have to do it again.
+
+2. Item recommmendation 
+
+[] - get base lol data (item values, champ base damage and passive values)
+  [] - figure out how much potential damage champ does at level 18 with no abilities and no items
+  [] - figure out how to measure damage output. Atk speed so probably 3 secs (average amount of time the adc can pump damage before getting focused in teamfight, as long as adc doesn't get engaged on) or increased to 5 secs to measure overall damage output
+  [] - compare base no item dmg output to item sets
+  Stretch: figure out a way to rank items based off of other champs in game (if there are tanks is there a weight to buying anti-health/tank items)
